@@ -15,6 +15,12 @@
 
 //gcc -L./minilibx-linux fdf.c -lmlx -lXext -lX11 -lm
 
+typedef struct s_point{
+    int x;
+    int y;
+    int height;
+} t_point;
+
 typedef struct s_params {
     void *mlx;
     void *window;
@@ -29,12 +35,9 @@ typedef struct s_params {
     float tile_height;
     float scr_ratio;
     int map[21][21];
+    t_point **screenmap;
 }   t_params;
 
-typedef struct {
-    float x;
-    float y;
-} Point;
 
 //////////////// INPUT /////////////////
 
@@ -67,10 +70,11 @@ int    cb_mouse_down(int button, int x, int y, t_params *params)
 {
     if (button == 1)
     {
-        params->mouse_down = 1;
         mlx_mouse_hide(params->mlx, params->window);
-        params->last_x = x;
-        params->last_y = y;
+        mlx_mouse_move(params->mlx, params->window, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
+        params->last_x = 0;
+        params->last_y = 0;
+        params->mouse_down = 1;
     }
     else if (button == 4)
         params->zoom = clamp(0.10, 100, params->zoom + 0.10);
@@ -204,30 +208,39 @@ void toIsometric(float vec[3], float result[2])
     }
 }
 
+typedef struct s_screenpos {
+    int x;
+    int y;
+}   t_screenpos;
+
+t_point *calculateScreenPosition(int x, int y, t_params *params)
+{
+    float rot_x[3][3];
+    float rot_y[3][3];
+    float rot_z[3][3];
+    float rotXY[3][3];
+    float rotFinal[3][3];
+    float rotFinal2[3][3];
+    float isoMatrix[3][3];
+    RotationMatrixX(deg_to_rad(params->x_rot), rot_x);
+    RotationMatrixY(deg_to_rad(params->y_rot), rot_y);
+    RotationMatrixZ(deg_to_rad(params->z_rot), rot_z);
+    multiplyMatrices(rot_x, rot_y, rotXY);
+    multiplyMatrices(rotXY, rot_z, rotFinal);
+
+    float point[3] = {x - 10, y - 10, params->map[x][y]};
+    float transformed_point[3];
+    // float vec[2];
+    multiply3DVector(rotFinal, point, transformed_point);
+    // toIsometric(transformed_point, vec);
+    t_point *p = params->screenmap[y * 20 + x];
+    p->x = (int)(transformed_point[0] * (params->tile_width * params->zoom) + SCREEN_WIDTH / 2 );
+    p->y = (int)(transformed_point[1] * (params->tile_height * params->zoom) + SCREEN_HEIGHT / 2);
+    p->height = params->map[x][y];
+}
+
 int    cb_loop(t_params *params)
 {
-    // int map[20][20] = {
-    //     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    //     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
-    //     { 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0 },
-    //     { 0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0, 0, 2, 2, 2, 2, 0, 0, 0, 0 },
-    //     { 0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0 },
-    //     { 0, 0, 2, 2, 2, 2, 2, 2, 2, 0, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0 },
-    //     { 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0 },
-    //     { 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0 },
-    //     { 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0 },
-    //     { 0, 0, 2, 2, 2, 2, 2, 2, 2, 6, 6, 2, 2, 2, 2, 2, 2, 0, 0, 0 },
-    //     { 0, 0, 2, 2, 2, 2, 2, 2, 2, 6, 6, 2, 2, 2, 2, 2, 2, 0, 0, 0 },
-    //     { 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0 },
-    //     { 0, 0, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0 },
-    //     { 0, 0, 0, 2, 2, 2, 2, 2, 2, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0 },
-    //     { 0, 0, 0, 2, 2, 2, 2, 2, 0, 0, 0, 2, 2, 2, 2, 2, 0, 0, 0, 0 },
-    //     { 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0, 2, 2, 2, 0, 0, 0, 0, 0 },
-    //     { 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0 },
-    //     { 0, 0, 0, 0, 0, 0, 2, 2, 0, 0, 0, 2, 2, 0, 0, 0, 0, 0, 0, 0 },
-    //     { 0, 0, 0, 0, 0, 0, 0, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0 },
-    //     { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 }
-    // };
     int m_x;
     int m_y;
     mlx_mouse_get_pos(params->mlx, params->window, &m_x, &m_y);
@@ -254,33 +267,18 @@ int    cb_loop(t_params *params)
         params->z_rot += 0.0005;
     }
     mlx_clear_window(params->mlx, params->window);
-    float rot_x[3][3];
-    float rot_y[3][3];
-    float rot_z[3][3];
-    float rotXY[3][3];
-    float rotFinal[3][3];
-    float rotFinal2[3][3];
-    float isoMatrix[3][3];
-    RotationMatrixX(deg_to_rad(params->x_rot), rot_x);
-    RotationMatrixY(deg_to_rad(params->y_rot), rot_y);
-    RotationMatrixZ(deg_to_rad(params->z_rot), rot_z);
-    multiplyMatrices(rot_x, rot_y, rotXY);
-    multiplyMatrices(rotXY, rot_z, rotFinal);
-    for (int y = 0; y < 21; y++) {
-        for (int x = 0; x < 21; x++) {
-            float point[3] = {x - 10, y - 10, params->map[x][y]};
-            float transformed_point[3];
-            // float vec[2];
-            multiply3DVector(rotFinal, point, transformed_point);
-            // toIsometric(transformed_point, vec);
-            int screen_x = (int)(transformed_point[0] * (params->tile_width * params->zoom) + SCREEN_WIDTH / 2 );
-            int screen_y = (int)(transformed_point[1] * (params->tile_height * params->zoom) + SCREEN_HEIGHT / 2);
-            if (screen_x <= SCREEN_WIDTH && screen_x >= 0)
-            {
-                if (screen_y <= SCREEN_HEIGHT && screen_y >= 0)
-                    mlx_pixel_put(params->mlx, params->window, screen_x, screen_y, clamp(0x000000, 0xFF0000, (1000 / (21 / (params->map[x][y] + 1))) << 16));
-            }
-        }
+    
+    for (int y = 0; y != 20; y++) {
+        for (int x = 0; x != 20; x++)
+            calculateScreenPosition(x, y, params);
+    }
+    int i = 0;
+    t_point *p;
+    while (params->screenmap[i] != NULL)
+    {
+        p = params->screenmap[i];
+        mlx_pixel_put(params->mlx, params->window, p->x, p->y, 0xFFFFFF);
+        i++;
     }
     return (0);
 }
@@ -305,15 +303,24 @@ int main()
     params->y_rot = 0;
     params->z_rot = 0;
     params->zoom = 0.25;
-    params->tile_width = SCREEN_WIDTH / 20;
-    params->tile_height = SCREEN_HEIGHT / 20;
+    params->tile_width = 30;
+    params->tile_height = 30;
     params->scr_ratio = SCREEN_WIDTH / SCREEN_HEIGHT;
     for (int i = 0; i < 21; ++i) {
         for (int j = 0; j < 21; ++j) {
-            int dist_to_center = fmax(abs(i - 21 / 2), abs(j - 21 / 2));
-            params->map[i][j] = fmax(0, 10 - dist_to_center);
+            int dist_to_center = fmax(abs(i - 20 / 2), abs(j - 20 / 2));
+            params->map[i][j] = fmax(0, 10 - dist_to_center + 1);
         }
     }
+    //POINT ARRAY INIT//////////////////////////////
+    t_point **ptr;
+    ptr = malloc(sizeof(t_point *) * 20 * 20 + 1);
+    ptr[sizeof(t_point *) * 20 * 20] = NULL;
+    int i = 0;
+    while (i < 20 * 20)
+        ptr[i++] = malloc(sizeof(t_point));
+    params->screenmap = ptr;
+    /////////////////////////////////////////////////
     //MOUSE
     mlx_hook(window, 4, (1L<<2)	,&cb_mouse_down, params);
     mlx_hook(window, 5, (1L<<3)	,&cb_mouse_up, params);
