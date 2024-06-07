@@ -10,8 +10,8 @@
 #define KEYESC  0xff1b //ESCAPE
 #define KEYSPC  0x0020 //SPACE
 
-#define SCREEN_WIDTH 1280
-#define SCREEN_HEIGHT 720
+#define SCREEN_WIDTH 1920
+#define SCREEN_HEIGHT 1080
 
 //gcc -L./minilibx-linux fdf.c -lmlx -lXext -lX11 -lm
 
@@ -34,7 +34,7 @@ typedef struct s_params {
     float tile_width;
     float tile_height;
     float scr_ratio;
-    int map[21][21];
+    int map[20][20];
     t_point **screenmap;
 }   t_params;
 
@@ -213,6 +213,30 @@ typedef struct s_screenpos {
     int y;
 }   t_screenpos;
 
+void drawLine(int x1, int y1, int x2, int y2, t_params *params) {
+    int dx = abs(x2 - x1);
+    int dy = abs(y2 - y1);
+    int sx = (x1 < x2) ? 1 : -1;
+    int sy = (y1 < y2) ? 1 : -1;
+    int err = dx - dy;
+    int e2;
+
+    while (1) {
+        mlx_pixel_put(params->mlx, params->window, x1, y1, 0xFFFFFF); // Draw the pixel
+        if (x1 == x2 && y1 == y2) break; // Check if the end point is reached
+
+        e2 = 2 * err;
+        if (e2 > -dy) {
+            err -= dy;
+            x1 += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            y1 += sy;
+        }
+    }
+}
+
 t_point *calculateScreenPosition(int x, int y, t_params *params)
 {
     float rot_x[3][3];
@@ -234,8 +258,8 @@ t_point *calculateScreenPosition(int x, int y, t_params *params)
     multiply3DVector(rotFinal, point, transformed_point);
     // toIsometric(transformed_point, vec);
     t_point *p = params->screenmap[y * 20 + x];
-    p->x = (int)(transformed_point[0] * (params->tile_width * params->zoom) + SCREEN_WIDTH / 2 );
-    p->y = (int)(transformed_point[1] * (params->tile_height * params->zoom) + SCREEN_HEIGHT / 2);
+    p->x = (int)((transformed_point[0] * (params->tile_width * params->zoom) + SCREEN_WIDTH / 2));
+    p->y = (int)((transformed_point[1] * (params->tile_height * params->zoom) + SCREEN_HEIGHT / 2));
     p->height = params->map[x][y];
 }
 
@@ -266,18 +290,23 @@ int    cb_loop(t_params *params)
         params->last_y = m_y;
         params->z_rot += 0.0005;
     }
-    mlx_clear_window(params->mlx, params->window);
-    
-    for (int y = 0; y != 20; y++) {
-        for (int x = 0; x != 20; x++)
+    for (int y = 0; y < 20; y++) {
+        for (int x = 0; x < 20; x++)
             calculateScreenPosition(x, y, params);
     }
     int i = 0;
     t_point *p;
-    while (params->screenmap[i] != NULL)
-    {
+    mlx_clear_window(params->mlx, params->window);
+    while (params->screenmap[i] != NULL) {
         p = params->screenmap[i];
-        mlx_pixel_put(params->mlx, params->window, p->x, p->y, 0xFFFFFF);
+        if (0 != (i + 1) % 20) { // Draw horizontal line
+            drawLine(p->x, p->y, params->screenmap[i + 1]->x, params->screenmap[i + 1]->y, params);
+        }
+        if (i < 20 * (20 - 1)) { // Draw vertical line
+            drawLine(p->x, p->y, params->screenmap[i + 20]->x, params->screenmap[i + 20]->y, params);
+        }
+        // Uncomment if you want to plot the point as well
+        // mlx_pixel_put(params->mlx, params->window, p->x, p->y, 0xFFFFFF);
         i++;
     }
     return (0);
@@ -306,8 +335,12 @@ int main()
     params->tile_width = 30;
     params->tile_height = 30;
     params->scr_ratio = SCREEN_WIDTH / SCREEN_HEIGHT;
-    for (int i = 0; i < 21; ++i) {
-        for (int j = 0; j < 21; ++j) {
+    // for (int i = 0; i < 20; ++i) {
+    //     for (int j = 0; j < 20; ++j)
+    //         params->map[i][j] = 0;
+    // }
+    for (int i = 0; i < 20; ++i) {
+        for (int j = 0; j < 20; ++j) {
             int dist_to_center = fmax(abs(i - 20 / 2), abs(j - 20 / 2));
             params->map[i][j] = fmax(0, 10 - dist_to_center + 1);
         }
