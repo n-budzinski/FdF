@@ -215,38 +215,34 @@ void toIsometric(float vec[3], float result[2])
     }
 }
 
-typedef struct s_screenpos {
-    int x;
-    int y;
-}   t_screenpos;
-
-void drawLine(int x1, int y1, int x2, int y2, t_params *params) {
-    int dx = abs(x2 - x1);
-    int dy = abs(y2 - y1);
-    int sx = (x1 < x2) ? 1 : -1;
-    int sy = (y1 < y2) ? 1 : -1;
+void drawLine(t_point p1, int x2, int y2, t_params *params) {
+    int dx = abs(x2 - p1.x);
+    int dy = abs(y2 - p1.y);
+    int sx = (p1.x < x2) ? 1 : -1;
+    int sy = (p1.y < y2) ? 1 : -1;
     int err = dx - dy;
     int e2;
-    int color = mlx_get_color_value(params->mlx, 0xFFFFFF);
+    int color = rand();
+    color = mlx_get_color_value(params->mlx, 0xefba4f);
 
     while (1) {
-        if (x1 >= 0 && x1 < SCREEN_WIDTH && y1 >= 0 && y1 < SCREEN_HEIGHT) {
-            int index = x1 * params->bits_per_color / 8 + y1 * params->line_size;
+        if (p1.x >= 0 && p1.x < SCREEN_WIDTH && p1.y >= 0 && p1.y < SCREEN_HEIGHT) {
+            int index = p1.x * params->bits_per_color / 8 + p1.y * params->line_size;
             params->data[index] = (color & 0xFF);
-            params->data[index + 1] = (color >> 8) & 0xFF;
-            params->data[index + 2] = (color >> 16) & 0xFF;
+            params->data[index + 1] = (color >> 8) * p1.height / 4 & 0xFF;
+            params->data[index + 2] = (color >> 16)  & 0xFF;
             params->data[index + 3] = (color >> 24) & 0xFF;
         }
-        if (x1 == x2 && y1 == y2) break;
+        if (p1.x == x2 && p1.y == y2) break;
 
         e2 = 2 * err;
         if (e2 > -dy) {
             err -= dy;
-            x1 += sx;
+            p1.x += sx;
         }
         if (e2 < dx) {
             err += dx;
-            y1 += sy;
+            p1.y += sy;
         }
     }
 }
@@ -273,7 +269,7 @@ t_point *calculateScreenPosition(int x, int y, t_params *params)
     // toIsometric(transformed_point, vec);
     t_point *p = params->screenmap[y * 21 + x];
     p->x = (int)((transformed_point[0] * (params->tile_width * params->zoom) + SCREEN_WIDTH / 2));
-    p->y = (int)((transformed_point[1] * (params->tile_height * params->zoom) + SCREEN_HEIGHT / 2));
+    p->y = (int)(((transformed_point[1] + 3) * (params->tile_height * params->zoom) + SCREEN_HEIGHT / 2));
     p->height = params->map[x][y];
 }
 
@@ -313,16 +309,26 @@ int    cb_loop(t_params *params)
     }
     void *image = mlx_new_image(params->mlx, SCREEN_WIDTH, SCREEN_WIDTH);
     char *data = mlx_get_data_addr(image, &params->bits_per_color, &params->line_size, &params->endianess);
+    int color = mlx_get_color_value(params->mlx, 0x000c1f37);
+    i = 0;
     params->data = data;
+    while (i + 4 < SCREEN_HEIGHT * SCREEN_WIDTH * 4)
+    {
+            params->data[i] = (color & 0xFF);
+            params->data[i + 1] = (color >> 8) & 0xFF;
+            params->data[i + 2] = (color >> 16) & 0xFF;
+            // params->data[i + 4] = (color >> 24) & 0xFF;
+            i+=4;
+    }
     t_point *p;
     i = 0;
     while (params->screenmap[i] != NULL) {
         p = params->screenmap[i];
         if (0 != (i + 1) % 21) {
-            drawLine(p->x, p->y, params->screenmap[i + 1]->x, params->screenmap[i + 1]->y, params);
+            drawLine(*p, params->screenmap[i + 1]->x, params->screenmap[i + 1]->y, params);
         }
         if (i < 21 * (21 - 1)) {
-            drawLine(p->x, p->y, params->screenmap[i + 21]->x, params->screenmap[i + 21]->y, params);
+            drawLine(*p, params->screenmap[i + 21]->x, params->screenmap[i + 21]->y, params);
         }
         i++;
     }
@@ -379,10 +385,7 @@ int main()
     {
         j = 0;
         while (j < params->window_size[0])
-        {
-            params->screen_buffer[i][j] = 0;
-            j++;
-        }
+            params->screen_buffer[i][j++] = 0;
         i++;
     }
     i = 0;
