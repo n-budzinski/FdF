@@ -39,6 +39,8 @@ typedef struct s_params {
     float tile_width;
     float tile_height;
     float scr_ratio;
+    int max_height;
+    int min_height;
     char *data;
     int map[21][21];
     t_point **screenmap;
@@ -215,25 +217,52 @@ void toIsometric(float vec[3], float result[2])
     }
 }
 
-void drawLine(t_point p1, int x2, int y2, t_params *params) {
-    int dx = abs(x2 - p1.x);
-    int dy = abs(y2 - p1.y);
-    int sx = (p1.x < x2) ? 1 : -1;
-    int sy = (p1.y < y2) ? 1 : -1;
+int    color_step_calc( int goal,  int start, float percentage)
+{
+    int goal_rgba[4];
+    int init_rgba[4];
+    int curr_rgba[4];
+    int current_color;
+
+    goal_rgba[0] = goal >> 24 & 0xFF;
+    goal_rgba[1] = goal >> 16 & 0xFF;
+    goal_rgba[2] = goal >> 8 & 0xFF;
+    goal_rgba[3] = goal & 0xFF;
+    init_rgba[0] = start >> 24 & 0xFF;
+    init_rgba[1] = start >> 16 & 0xFF;
+    init_rgba[2] = start >> 8 & 0xFF;
+    init_rgba[3] = start & 0xFF;
+    curr_rgba[0] = (int)(init_rgba[0] + (goal_rgba[0] - init_rgba[0]) * percentage);
+    curr_rgba[1] = (int)(init_rgba[1] + (goal_rgba[1] - init_rgba[1]) * percentage);
+    curr_rgba[2] = (int)(init_rgba[2] + (goal_rgba[2] - init_rgba[2]) * percentage);
+    curr_rgba[3] = (int)(init_rgba[3] + (goal_rgba[3] - init_rgba[3]) * percentage);
+    current_color = (curr_rgba[0] << 24) | 
+    (curr_rgba[1] << 16) | 
+    (curr_rgba[2] << 8) | 
+    curr_rgba[3] & 0xFF;
+    return(current_color);
+}
+
+void drawLine(t_point p1, t_point p2, t_params *params) {
+    int dx = abs(p2.x - p1.x);
+    int dy = abs(p2.y - p1.y);
+    int sx = (p1.x < p2.x) ? 1 : -1;
+    int sy = (p1.y < p2.y) ? 1 : -1;
     int err = dx - dy;
     int e2;
-    int color = rand();
-    color = mlx_get_color_value(params->mlx, 0xefba4f);
 
     while (1) {
         if (p1.x >= 0 && p1.x < SCREEN_WIDTH && p1.y >= 0 && p1.y < SCREEN_HEIGHT) {
             int index = p1.x * params->bits_per_color / 8 + p1.y * params->line_size;
+            float height_range = params->max_height - params->min_height;
+            float percentage = (p1.height - params->min_height) / height_range;
+            int color = color_step_calc(0x00FF00FF, 0x001e81b0, percentage);
             params->data[index] = (color & 0xFF);
-            params->data[index + 1] = (color >> 8) * p1.height / 4 & 0xFF;
-            params->data[index + 2] = (color >> 16)  & 0xFF;
+            params->data[index + 1] = (color >> 8) & 0xFF;
+            params->data[index + 2] = (color >> 16) & 0xFF;
             params->data[index + 3] = (color >> 24) & 0xFF;
         }
-        if (p1.x == x2 && p1.y == y2) break;
+        if (p1.x == p2.x && p1.y == p2.y) break;
 
         e2 = 2 * err;
         if (e2 > -dy) {
@@ -301,7 +330,7 @@ int    cb_loop(t_params *params)
     {
         params->last_x = m_x;
         params->last_y = m_y;
-        params->z_rot += 0.005;
+        params->z_rot += 0.020;
     }
     for (int y = 0; y < 21; y++) {
         for (int x = 0; x < 21; x++)
@@ -309,7 +338,7 @@ int    cb_loop(t_params *params)
     }
     void *image = mlx_new_image(params->mlx, SCREEN_WIDTH, SCREEN_WIDTH);
     char *data = mlx_get_data_addr(image, &params->bits_per_color, &params->line_size, &params->endianess);
-    int color = mlx_get_color_value(params->mlx, 0x000c1f37);
+    int color = mlx_get_color_value(params->mlx, 0x0006141a);
     i = 0;
     params->data = data;
     while (i + 4 < SCREEN_HEIGHT * SCREEN_WIDTH * 4)
@@ -317,7 +346,7 @@ int    cb_loop(t_params *params)
             params->data[i] = (color & 0xFF);
             params->data[i + 1] = (color >> 8) & 0xFF;
             params->data[i + 2] = (color >> 16) & 0xFF;
-            // params->data[i + 4] = (color >> 24) & 0xFF;
+            params->data[i + 4] = (color >> 24) & 0xFF;
             i+=4;
     }
     t_point *p;
@@ -325,10 +354,11 @@ int    cb_loop(t_params *params)
     while (params->screenmap[i] != NULL) {
         p = params->screenmap[i];
         if (0 != (i + 1) % 21) {
-            drawLine(*p, params->screenmap[i + 1]->x, params->screenmap[i + 1]->y, params);
+
+            drawLine(*p, *params->screenmap[i + 1], params);
         }
         if (i < 21 * (21 - 1)) {
-            drawLine(*p, params->screenmap[i + 21]->x, params->screenmap[i + 21]->y, params);
+            drawLine(*p, *params->screenmap[i + 21], params);
         }
         i++;
     }
@@ -378,6 +408,8 @@ int main()
     params->zoom = 0.25;
     params->tile_width = 30;
     params->tile_height = 30;
+    params->min_height = 0;
+    params->max_height = 15;
     params->scr_ratio = SCREEN_WIDTH / SCREEN_HEIGHT;
     
     i = 0;
