@@ -7,8 +7,8 @@
     #define M_PI 3.14159265358979323846
 #endif
 
-#define SCREEN_WIDTH 800
-#define SCREEN_HEIGHT 600
+#define SCREEN_WIDTH 1920
+#define SCREEN_HEIGHT 1080
 
 
 enum Keyboard {
@@ -34,9 +34,9 @@ typedef struct s_params {
     int mouse_down;
     int last_x;
     int last_y;
-    int bits_per_color;
-    int line_size;
-    int endianess;
+    unsigned int bits_per_color;
+    unsigned int line_size;
+    unsigned int endianess;
     float zoom;
     float x_rot;
     float y_rot;
@@ -46,6 +46,10 @@ typedef struct s_params {
     float scr_ratio;
     int max_height;
     int min_height;
+    unsigned int bg_color_top;
+    unsigned int bg_color_bottom;
+    unsigned int model_color_top;
+    unsigned int model_color_bottom;
     char projection;
     char *data;
     int map[21][21];
@@ -69,6 +73,8 @@ int    cb_key(int keycode, t_params *params)
         mlx_clear_window(params->mlx, params->window);
         printf("Clearing window\n");
     }
+    else if(keycode >= 0x30 && keycode <= 0x39)
+        params->projection = keycode - 0x30;
     return (0);
 }
 
@@ -81,6 +87,7 @@ float clamp(float min, float max, float value)
     else
         return (value);
 }
+
 int    cb_mouse_down(int button, int x, int y, t_params *params)
 {
     if (button == 3)
@@ -107,7 +114,6 @@ int    cb_mouse_up(int button, int x, int y, t_params *params)
 }
 
 //////////////// INPUT /////////////////
-
 
 float deg_to_rad(float deg)
 {
@@ -153,6 +159,7 @@ void RotationMatrixZ(float rads, float R[3][3])
     R[2][2] = 1;
 }
 
+//Rotation matrix for isometric projection
 void IsometricMatrix(float R[3][3])
 {
     R[0][0] = sqrt(3)/2;
@@ -169,6 +176,7 @@ void    multiplyMatrices(float a[3][3], float b[3][3], float result[3][3])
     int i;
     int j;
     int k;
+
     i = 0;
     while(i < 3)
     {
@@ -207,9 +215,7 @@ void    multiply3DVector(float r[3][3], float vec[3], float result[3])
     }
 }
 
-
-
-int    color_step_calc( int goal,  int start, float percentage)
+unsigned int    color_step_calc(unsigned int start, unsigned int goal, float percentage)
 {
     int goal_rgba[4];
     int init_rgba[4];
@@ -264,7 +270,7 @@ void drawLine(t_point p1, t_point p2, t_params *params) {
             int index = lp.x * params->bits_per_color / 8 + lp.y * params->line_size;
             float height_range = params->max_height - params->min_height;
             percentage = fabs((float)(hp.height - params->min_height) / height_range);
-            int color = color_step_calc(0xd4b1bc, 0xdf3562, percentage);
+            int color = color_step_calc(params->model_color_bottom, params->model_color_top, percentage);
             params->data[index] = (color & 0xFF);
             params->data[index + 1] = (color >> 8) & 0xFF;
             params->data[index + 2] = (color >> 16) & 0xFF;
@@ -285,8 +291,8 @@ void drawLine(t_point p1, t_point p2, t_params *params) {
 }
 
 enum Projections {
-    ISOMETRIC = 0,
-    PERSPECTIVE = 1
+    ISOMETRIC = 1,
+    PERSPECTIVE = 2
 };
 
 const char *getProjectionName(enum Projections projection)
@@ -356,24 +362,43 @@ void    draw_debug_info(t_params *params)
     free(projection);
 }
 
-void mouse_down_hander(t_params *params)
+void mouse_rotation_handler(t_params *params)
 {
-    int m_x;
-    int m_y;
+    int pos[2];
 
-    params->last_x = m_x;
-    params->last_y = m_y;
-    if (m_x <= SCREEN_WIDTH / 2)
-        m_x = SCREEN_WIDTH / 2;
-    else if(m_x >= SCREEN_WIDTH / 2)
-        m_x = SCREEN_WIDTH / 2;
-    if (m_y >= SCREEN_HEIGHT / 2)
-        m_y = SCREEN_HEIGHT / 2;
-    else if (m_y <= SCREEN_HEIGHT / 2)
-        m_y = SCREEN_HEIGHT / 2;
-    params->z_rot += (m_x - params->last_x) * 0.05;
-    params->x_rot += (m_y - params->last_y) * 0.05;
-    mlx_mouse_move(params->mlx, params->window, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
+    pos[0] = 0;
+    pos[1] = 1;
+    if (params->mouse_down)
+    {
+        mlx_mouse_get_pos(params->mlx, params->window, &(pos[0]), &(pos[1]));
+        params->last_x = pos[0];
+        params->last_y = pos[1];
+        if (pos[0] <= SCREEN_WIDTH / 2 || pos[0] >= SCREEN_WIDTH / 2)
+            pos[0] = SCREEN_WIDTH / 2;
+        if (pos[1] >= SCREEN_HEIGHT / 2 || pos[1] <= SCREEN_HEIGHT / 2)
+            pos[1] = SCREEN_HEIGHT / 2;
+        params->x_rot += (pos[1] - params->last_y) * 0.05;
+        params->z_rot += (pos[0] - params->last_x) * 0.05;
+        mlx_mouse_move(params->mlx, params->window, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
+    }
+    else
+    {
+        params->last_x = pos[0];
+        params->last_y = pos[1];
+        params->z_rot += 0.05;
+    }
+}
+
+void    apply_rotation_matricies(float x, float y, float z, float result[3][3])
+{
+    float rot_a[3][3];
+    float rot_b[3][3];
+    float rot_c[3][3];
+    RotationMatrixX(deg_to_rad(x), rot_a);
+    RotationMatrixY(deg_to_rad(y), rot_b);
+    multiplyMatrices(rot_a, rot_b, rot_c);
+    RotationMatrixZ(deg_to_rad(z), rot_b);
+    multiplyMatrices(rot_c, rot_b, result);
 }
 
 #include <stdio.h>
@@ -382,33 +407,11 @@ int    cb_loop(t_params *params)
 
     int i;
     int j;
+    float rotFinal[3][3];
 
     draw_debug_info(params);
-    mlx_mouse_get_pos(params->mlx, params->window, &m_x, &m_y);
-    if (params->mouse_down)
-    {
-        mouse_down_handler
-    }
-    else
-    {
-        params->last_x = m_x;
-        params->last_y = m_y;
-        params->z_rot += 0.020;
-    }
-    float rot_x[3][3];
-    float rot_y[3][3];
-    float rot_z[3][3];
-    float rotXY[3][3];
-    float rotFinal[3][3];
-    float rotFinal2[3][3];
-    float isoFinal[3][3];
-    RotationMatrixX(deg_to_rad(params->x_rot), rot_x);
-    RotationMatrixY(deg_to_rad(params->y_rot), rot_y);
-    RotationMatrixZ(deg_to_rad(params->z_rot), rot_z);
-    IsometricMatrix(isoFinal);
-    multiplyMatrices(rot_x, rot_y, rotXY);
-    multiplyMatrices(rotXY, rot_z, rotFinal);
-    // multiplyMatrices(rotFinal, isoFinal, rotFinal2);
+    mouse_rotation_handler(params);
+    apply_rotation_matricies(params->x_rot, params->y_rot, params->z_rot, rotFinal);
     for (int y = 0; y < 21; y++) {
         for (int x = 0; x < 21; x++)
         {
@@ -416,25 +419,38 @@ int    cb_loop(t_params *params)
             float transformed_point[3];
             float result[2];
             multiply3DVector(rotFinal, point, transformed_point);
-            // isometricProjection(transformed_point, result);
             t_point *p = params->screenmap[y * 21 + x];
             p->x = (int)((transformed_point[0] * (params->tile_width * params->zoom) + SCREEN_WIDTH / 2));
-            p->y = (int)(((transformed_point[1]) * (params->tile_height * params->zoom) + SCREEN_HEIGHT / 2));
+            p->y = (int)((transformed_point[1] * (params->tile_height * params->zoom) + SCREEN_HEIGHT / 2));
             p->height = params->map[x][y];
         }
     }
     void *image = mlx_new_image(params->mlx, SCREEN_WIDTH, SCREEN_WIDTH);
     char *data = mlx_get_data_addr(image, &params->bits_per_color, &params->line_size, &params->endianess);
-    int color = mlx_get_color_value(params->mlx, 0x380c43);
+    int color;
     i = 0;
+    int yCoord;
     params->data = data;
-    while (i + 4 < SCREEN_HEIGHT * SCREEN_WIDTH * 4)
+    unsigned int x;
+    unsigned int y;
+    unsigned int idx;
+    float perc;
+    y = 0;
+    while(y < SCREEN_HEIGHT)
     {
-            params->data[i] = (color & 0xFF);
-            params->data[i + 1] = (color >> 8) & 0xFF;
-            params->data[i + 2] = (color >> 16) & 0xFF;
-            params->data[i + 4] = (color >> 24) & 0xFF;
-            i+=4;
+        x = 0;
+        perc = (float)y / (SCREEN_HEIGHT - 1);
+        color = color_step_calc(params->bg_color_top, params->bg_color_bottom, perc);
+        while(x < SCREEN_WIDTH)
+        {
+            idx = (x * params->bits_per_color / 8) + (y * params->line_size);
+            params->data[idx] = (color & 0xFF);
+            params->data[idx + 1] = (color >> 8) & 0xFF;
+            params->data[idx + 2] = (color >> 16) & 0xFF;
+            params->data[idx + 3] = (color >> 24) & 0xFF;
+            x++;
+        }
+        y++;
     }
     t_point *p;
     i = 0;
@@ -489,15 +505,19 @@ int main()
     params->map_dimensions[1] = 21;
     params->mouse_down = 0;
     params->last_x = 0;
-    params->x_rot = 0;
+    params->x_rot = 50;
     params->y_rot = 0;
-    params->z_rot = 0;
+    params->z_rot = 45;
     params->zoom = 0.25;
     params->tile_width = 30;
     params->tile_height = 30;
     params->min_height = 0;
-    params->max_height = 15;
-    params->projection = 0;
+    params->max_height = 11;
+    params->projection = 1;
+    params->bg_color_top = 0x57212f;
+    params->bg_color_bottom = 0x091027;
+    params->model_color_top = 0xffffff;
+    params->model_color_bottom = 0xe72337;
     params->scr_ratio = SCREEN_WIDTH / SCREEN_HEIGHT;
     
     i = 0;
@@ -532,6 +552,7 @@ int main()
     //MOUSE
     mlx_hook(window, 4, (1L<<2)	,&cb_mouse_down, params);
     mlx_hook(window, 5, (1L<<3)	,&cb_mouse_up, params);
+
     mlx_loop_hook(mlx, &cb_loop, params);
     //KEYS
     mlx_key_hook(window, &cb_key, params);
