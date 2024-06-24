@@ -10,7 +10,7 @@
 #endif
 
 #ifndef BUFFER_SIZE
-# define BUFFER_SIZE 20
+# define BUFFER_SIZE 10
 #endif
 
 typedef struct s_node t_node;
@@ -145,7 +145,7 @@ void    break_apart(t_node **list, char **leftovers, char *content, int nlpos)
 
     len = ft_strlen(content);
     append_node(list, ft_strndup(content, nlpos));
-    if (nlpos == len - 1)
+    if (nlpos == -1 || nlpos == len - 1)
         return ;
     str = ft_strndup(content + nlpos + 1, len - nlpos);
     *leftovers = NULL;
@@ -214,21 +214,23 @@ int main()
         printf("Error opening file.");
         return (0);
     }
+    if (leftovers != NULL)
+    {
+        nlpos = ft_strchr(leftovers, '\n');
+        break_apart(&buffer, &leftovers, leftovers, nlpos);
+    }
     while (flg)
     {
-        if (leftovers != NULL)
-        {
-            nlpos = ft_strchr(leftovers, '\n');
-            break_apart(&buffer, &leftovers, leftovers, nlpos);
-        }
         flg = read(fd, temp, BUFFER_SIZE);
         line = ft_strjoin(leftovers, temp);
-        leftovers = NULL;
         nlpos = ft_strchr(line, '\n');
         if (nlpos == -1)
             append_node(&buffer, line);
         else
+        {
             break_apart(&buffer, &leftovers, line, nlpos);
+            break;
+        }
         if (flg != BUFFER_SIZE)
             break;
     }
