@@ -22,6 +22,18 @@ typedef struct s_node {
 
 ///////////////// HEADER
 
+int ft_strlen(char *str)
+{
+    int i;
+
+    if (str == NULL)
+        return (-1);
+    i = 0;
+    while (str[i])
+        i++;
+    return (i);
+}
+
 int ft_strchr(char *str, char c)
 {
     int i;
@@ -60,19 +72,60 @@ t_node *get_last_node(t_node *node)
     return (node);
 }
 
-void    append_node(t_node **list, char *content)
+void    free_list(t_node *node)
+{
+    t_node *temp;
+    while (node)
+    {
+        temp = node;
+        node = node->next;
+        free(temp->content);
+        free(temp);
+    }
+}
+
+void    append_node(t_node **list, t_node *node)
 {
     t_node *last_node;
-    t_node *node;
 
-    node = create_node(content);
     if (*list == NULL)
-    {
         *list = node;
-        return ;
+    else
+    {
+        last_node = get_last_node(*list);
+        last_node->next = node;
     }
-    last_node = get_last_node(*list);
-    last_node->next = node;
+}
+
+void    prepend_node(t_node **list, t_node *node)
+{
+    if (*list == NULL)
+        *list = node; 
+    else
+    {
+        node->next = *list;
+        *list = node;
+    }
+}
+
+char    *ft_strdup(char *src)
+{
+    char *str;
+    int i;
+
+    if (src == NULL)
+        return (NULL);
+    i = ft_strlen(src);
+    str = malloc(i + 1);
+    if (str == NULL)
+        return (NULL);
+    str[i] = '\0';
+    while (i >= 0)
+    {
+        str[i] = src[i];
+        i--;
+    }
+    return (str);
 }
 
 char    *ft_strndup(char *src, int amt)
@@ -89,18 +142,6 @@ char    *ft_strndup(char *src, int amt)
     }
     str[i] = '\0';
     return (str);
-}
-
-int ft_strlen(char *str)
-{
-    int i;
-
-    if (str == NULL)
-        return (-1);
-    i = 0;
-    while (str[i])
-        i++;
-    return (i);
 }
 
 void ft_strcpy(char *dst, char *src)
@@ -138,19 +179,23 @@ char *ft_strjoin(char *s1, char *s2)
     return (str);
 }
 
-void    break_apart(t_node **list, char **leftovers, char *content, int nlpos)
+char    *get_line(char **str)
 {
-    char *str;
-    int len;
+    char *line;
+    char *temp;
+    int nl;
 
-    len = ft_strlen(content);
-    append_node(list, ft_strndup(content, nlpos));
-    if (nlpos == -1 || nlpos == len - 1)
-        return ;
-    str = ft_strndup(content + nlpos + 1, len - nlpos);
-    *leftovers = NULL;
-    free(*leftovers);
-    *leftovers = str;
+    if (*str == NULL)
+        return (NULL);
+    nl = ft_strchr(*str, '\n');
+    if (nl == -1)
+        return (*str);
+    else
+        line = ft_strndup(*str, nl);
+    temp = ft_strdup(&(*str)[nl]);
+    free(*str);
+    *str = temp;
+    return (line);
 }
 
 int get_joint_memsize(t_node *node)
@@ -158,8 +203,6 @@ int get_joint_memsize(t_node *node)
     int size;
 
     size = 0;
-    if (node == NULL)
-        return (0);
     while (node)
     {
         size += ft_strlen(node->content);
@@ -188,53 +231,125 @@ char    *join_nodes(t_node *node)
     return (str);
 }
 
-int main()
+int init_buffer(char **buffer)
 {
-    int fd;
-    int flg;
-    char *temp;
-    t_node *buffer;
-    static char *leftovers;
-    t_node *node;
-    char *line;
-    int nlpos;
+    *buffer = malloc(BUFFER_SIZE + 1);
+    if (*buffer == NULL)
+        return (-1);
+    (*buffer)[BUFFER_SIZE] = '\0';
+    return (1);
+}
 
+char *read_map(int fd)
+{
+    int flg;
+    char *buffer;
+    t_node *temp;
+    t_node *list;
 
     flg = 1;
-    buffer = NULL;
-    leftovers = NULL;
-    temp = malloc(BUFFER_SIZE + 1);
-    temp[BUFFER_SIZE] = '\0';
-    if (temp == NULL)
-        return (0);
-    fd = open(MAP, O_RDONLY);
-
-    if (!fd)
-    {
-        printf("Error opening file.");
-        return (0);
-    }
-    if (leftovers != NULL)
-    {
-        nlpos = ft_strchr(leftovers, '\n');
-        break_apart(&buffer, &leftovers, leftovers, nlpos);
-    }
+    list = NULL;
+    if (init_buffer(&buffer) == -1)
+        return (NULL);
     while (flg)
     {
-        flg = read(fd, temp, BUFFER_SIZE);
-        line = ft_strjoin(leftovers, temp);
-        nlpos = ft_strchr(line, '\n');
-        if (nlpos == -1)
-            append_node(&buffer, line);
-        else
+        flg = read(fd, buffer, BUFFER_SIZE);
+        if (flg != -1)
         {
-            break_apart(&buffer, &leftovers, line, nlpos);
-            break;
+            buffer[flg] = '\0';
+            temp = create_node(ft_strdup(buffer));
+            append_node(&list, temp);
         }
         if (flg != BUFFER_SIZE)
             break;
     }
-    printf("%s", join_nodes(buffer));
+    free(buffer);
+    buffer = join_nodes(list);
+    free_list(list);
+    return (buffer);
+}
 
-    return (0);
+//Count total occurences of a character in a given string
+int ft_strchrn(char *str, char c)
+{
+    int i;
+    int n;
+
+    i = 0;
+    n = 0;
+    while (str[i] != '\0')
+    {
+        if (str[i] == c)
+            n++;
+        i++;
+    }
+    return (n);
+}
+
+//Count unique separators within a string
+size_t ft_strsepn(char *str, char c)
+{
+    int i;
+    size_t n;
+
+    i = 0;
+    n = 0;
+    while (str[i] != '\0')
+    {
+        if (str[i] == c)
+        {
+            n++;
+            while (str[i] == c && str[i] != '\0')
+                i++;
+        }
+        i++;
+    }
+    return (-1);
+}
+
+typedef struct s_point {
+    int height;
+    int color;
+}   t_point;
+
+int    dissect_map(t_point ****output, char *data)
+{
+    size_t nrows;
+    size_t ncols;
+    int nlpos;
+    int pos;
+    int i;
+
+    pos = 0;
+    nrows = ft_strchrn(data, '\n') + 1;
+    **output = calloc(nrows + 1, sizeof(void *));
+    if (**output == NULL)
+        return (-1);
+    while (data[pos] == '\n')
+    {
+        i = 0;
+        ncols = ft_strsepn(&data[pos + 1], ' ');
+        **output[i] = calloc(ncols + 1, sizeof(t_point *));
+        if (**output[i] == NULL)
+            return (-1);
+        nlpos = ft_strchr(&data[pos + 1], '\n');
+        if (nlpos == -1)
+            break ;
+        pos += nlpos + 1;
+        i++;
+    }
+    return (1);
+}
+
+int main()
+{
+    int fd;
+    char *data;
+    t_point ***map;
+
+    fd = open(MAP, O_RDONLY);
+    if (fd < 0)
+        return (-1);
+    data = read_map(fd);
+    dissect_map(&map, data);
 }
