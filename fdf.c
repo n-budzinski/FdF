@@ -1,245 +1,9 @@
-#include "minilibx-linux/mlx.h"
-#include "minilibx-linux/mlx_int.h"
-#define _USE_MATH_DEFINES
-#include <math.h>
-
-#ifndef M_PI
-    #define M_PI 3.14159265358979323846
-#endif
-
-#define SCREEN_WIDTH 1920
-#define SCREEN_HEIGHT 1080
 
 
-enum Keyboard {
-    KEYSPC = 0x20,
-    KEYESC = 0xff1b,
-    KEYNUM1 = 0x31,
-    KEYNUM2 = 0x32
-};
-
-//gcc -L./minilibx-linux fdf.c -lmlx -lXext -lX11 -lm
-
-typedef struct s_point{
-    int x;
-    int y;
-    int height;
-} t_point;
-
-typedef struct s_params {
-    void *mlx;
-    void *window;
-    int window_size[2];
-    int map_dimensions[2];
-    int mouse_down;
-    int last_x;
-    int last_y;
-    unsigned int bits_per_color;
-    unsigned int line_size;
-    unsigned int endianess;
-    float zoom;
-    float x_rot;
-    float y_rot;
-    float z_rot;
-    float tile_width;
-    float tile_height;
-    float scr_ratio;
-    int max_height;
-    int min_height;
-    unsigned int bg_color_top;
-    unsigned int bg_color_bottom;
-    unsigned int model_color_top;
-    unsigned int model_color_bottom;
-    char projection;
-    char *data;
-    int map[21][21];
-    t_point **screenmap;
-    int screen_buffer[SCREEN_WIDTH][SCREEN_HEIGHT];
-}   t_params;
 
 
-//////////////// INPUT /////////////////
 
-int    cb_key(int keycode, t_params *params)
-{
-    int x;
-    int y;
-    
-    printf("KEYPRESS DETECTED (%x)\n", keycode);
-    if (keycode == KEYESC)
-        mlx_loop_end(params->mlx);
-    else if(keycode == KEYSPC)
-    {
-        mlx_clear_window(params->mlx, params->window);
-        printf("Clearing window\n");
-    }
-    else if(keycode >= 0x30 && keycode <= 0x39)
-        params->projection = keycode - 0x30;
-    return (0);
-}
 
-float clamp(float min, float max, float value)
-{
-    if (value < min)
-        return (min);
-    else if (value > max)
-        return (max);
-    else
-        return (value);
-}
-
-int    cb_mouse_down(int button, int x, int y, t_params *params)
-{
-    if (button == 3)
-    {
-        mlx_mouse_hide(params->mlx, params->window);
-        mlx_mouse_move(params->mlx, params->window, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
-        params->last_x = 0;
-        params->last_y = 0;
-        params->mouse_down = 1;
-    }
-    else if (button == 4)
-        params->zoom = clamp(0.2, 2, params->zoom + 0.1);
-    else if (button == 5)
-        params->zoom = clamp(0.2, 2, params->zoom - 0.1);
-    return (0);
-}
-
-int    cb_mouse_up(int button, int x, int y, t_params *params)
-{
-    if (button == 3)
-        mlx_mouse_show(params->mlx, params->window);
-        params->mouse_down = 0;
-    return (0);
-}
-
-//////////////// INPUT /////////////////
-
-float deg_to_rad(float deg)
-{
-    return (deg * M_PI / 180.0);
-}
-
-void RotationMatrixX(float rads, float R[3][3])
-{
-    R[0][0] = 1;
-    R[0][1] = 0;
-    R[0][2] = 0;
-    R[1][0] = 0;
-    R[1][1] = cos(rads);
-    R[1][2] = -sin(rads);
-    R[2][0] = 0;
-    R[2][1] = sin(rads);
-    R[2][2] = cos(rads);
-}
-
-void RotationMatrixY(float rads, float R[3][3])
-{
-    R[0][0] = cos(rads);
-    R[0][1] = 0;
-    R[0][2] = sin(rads);
-    R[1][0] = 0;
-    R[1][1] = 1;
-    R[1][2] = 0;
-    R[2][0] = -sin(rads);
-    R[2][1] = 0;
-    R[2][2] = cos(rads);
-}
-
-void RotationMatrixZ(float rads, float R[3][3])
-{
-    R[0][0] = cos(rads);
-    R[0][1] = -sin(rads);
-    R[0][2] = 0;
-    R[1][0] = sin(rads);
-    R[1][1] = cos(rads);
-    R[1][2] = 0;
-    R[2][0] = 0;
-    R[2][1] = 0;
-    R[2][2] = 1;
-}
-
-//Rotation matrix for isometric projection
-void IsometricMatrix(float R[3][3])
-{
-    R[0][0] = sqrt(3)/2;
-    R[0][1] = 0;
-    R[0][2] = -sqrt(3)/2;
-    R[1][0] = 1.0 / 2;
-    R[1][1] = 1;
-    R[1][2] = 1.0 / 2;
-}
-
-//Multiply matrices
-void    multiplyMatrices(float a[3][3], float b[3][3], float result[3][3])
-{
-    int i;
-    int j;
-    int k;
-
-    i = 0;
-    while(i < 3)
-    {
-        j = 0;
-        while(j < 3)
-        {
-            result[i][j] = 0;
-            k = 0;
-            while (k < 3)
-            {
-                result[i][j] += a[i][k] * b[k][j];
-                k++;
-            }
-            j++;
-        }
-        i++;
-    }
-}
-
-//Multiply resulting rotation matrix by 3D vector
-void    multiply3DVector(float r[3][3], float vec[3], float result[3])
-{
-    int i;
-    int j;
-    i = 0;
-    while(i < 3)
-    {
-        j = 0;
-        result[i] = 0;
-        while(j < 3)
-        {
-            result[i] += r[i][j] * vec[j];
-            j++;
-        }
-        i++;
-    }
-}
-
-unsigned int    color_step_calc(unsigned int start, unsigned int goal, float percentage)
-{
-    int goal_rgba[4];
-    int init_rgba[4];
-    int curr_rgba[4];
-    int current_color;
-
-    goal_rgba[0] = goal >> 24 & 0xFF;
-    goal_rgba[1] = goal >> 16 & 0xFF;
-    goal_rgba[2] = goal >> 8 & 0xFF;
-    goal_rgba[3] = goal & 0xFF;
-    init_rgba[0] = start >> 24 & 0xFF;
-    init_rgba[1] = start >> 16 & 0xFF;
-    init_rgba[2] = start >> 8 & 0xFF;
-    init_rgba[3] = start & 0xFF;
-    curr_rgba[0] = (int)(init_rgba[0] + (goal_rgba[0] - init_rgba[0]) * percentage);
-    curr_rgba[1] = (int)(init_rgba[1] + (goal_rgba[1] - init_rgba[1]) * percentage);
-    curr_rgba[2] = (int)(init_rgba[2] + (goal_rgba[2] - init_rgba[2]) * percentage);
-    curr_rgba[3] = (int)(init_rgba[3] + (goal_rgba[3] - init_rgba[3]) * percentage);
-    current_color = (curr_rgba[0] << 24) | 
-    (curr_rgba[1] << 16) | 
-    (curr_rgba[2] << 8) | 
-    curr_rgba[3] & 0xFF;
-    return(current_color);
-}
 
 void drawLine(t_point p1, t_point p2, t_params *params) {
     t_point lp;
@@ -290,77 +54,13 @@ void drawLine(t_point p1, t_point p2, t_params *params) {
     }
 }
 
-enum Projections {
-    ISOMETRIC = 1,
-    PERSPECTIVE = 2
-};
 
-const char *getProjectionName(enum Projections projection)
-{
-    if (projection == ISOMETRIC)
-        return "ISOMETRIC";
-    else if (projection == PERSPECTIVE)
-        return "PERSPECTIVE";
-    else
-        return "UNDEFINED";
-}
 
-int	ft_strlen(const char *c)
-{
-	int	i;
 
-	i = 0;
-	while (c[i] != '\0')
-		i++;
-	return (i);
-}
 
-size_t	ft_strlcpy(char *dst, const char *src, size_t size)
-{
-	size_t	i;
-	size_t	len;
 
-	len = ft_strlen(src);
-	i = 0;
-	if (size > 0)
-	{
-		while (i < size - 1 && src[i])
-		{
-			dst[i] = src[i];
-			i++;
-		}
-		dst[i] = 0x00;
-	}
-	return (len);
-}
 
-char	*ft_strjoin(char const *s1, char const *s2)
-{
-	size_t	s1l;
-	size_t	s2l;
-	size_t	tl;
-	void	*ptr;
 
-	s1l = ft_strlen(s1);
-	s2l = ft_strlen(s2);
-	tl = s1l + s2l + 1;
-	ptr = (char *)malloc(tl);
-	if (ptr != NULL)
-	{
-		ft_strlcpy(ptr, s1, s1l + 1);
-		ft_strlcpy(ptr + s1l, s2, s2l + 1);
-	}
-	return (ptr);
-}
-
-void    draw_debug_info(t_params *params)
-{
-    char *projection;
-
-    projection = ft_strjoin("PROJECTION TYPE: ", getProjectionName(params->projection));
-    mlx_string_put(params->mlx, params->window, 10, 10, 0xFFFFFF, projection);
-    free(projection);
-}
 
 void mouse_rotation_handler(t_params *params)
 {
@@ -528,18 +228,18 @@ int main()
             params->screen_buffer[i][j++] = 0;
         i++;
     }
-    i = 0;
-    while (i < params->map_dimensions[0])
-    {
-        j = 0;
-        while (j < params->map_dimensions[1])
-        {
-            int dist_to_center = fmax(abs(i - 21 / 2), abs(j - 21 / 2));
-            params->map[i][j] = fmax(0, 10 - dist_to_center + 1);
-            j++;
-        }
-        i++;
-    }
+    // i = 0;
+    // while (i < params->map_dimensions[0])
+    // {
+    //     j = 0;
+    //     while (j < params->map_dimensions[1])
+    //     {
+    //         int dist_to_center = fmax(abs(i - 21 / 2), abs(j - 21 / 2));
+    //         params->map[i][j] = fmax(0, 10 - dist_to_center + 1);
+    //         j++;
+    //     }
+    //     i++;
+    // }
     //POINT ARRAY INIT//////////////////////////////
     t_point **ptr;
     ptr = malloc(sizeof(t_point *) * 21 * 21 + 1);
