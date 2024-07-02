@@ -6,12 +6,15 @@
 /////////////////  HEADER ////////////////
 
 #ifndef MAP
-// # define MAP "./basictest.fdf"
-# define MAP "./pyramide.fdf"
+# define MAP "./basictest.fdf"
 #endif
 
 #ifndef BUFFER_SIZE
 # define BUFFER_SIZE 20
+#endif
+
+#ifndef WINDOW_TITLE
+# define WINDOW_TITLE "nbudzins's FdF"
 #endif
 
 typedef struct s_node t_node;
@@ -20,6 +23,15 @@ typedef struct s_node {
     char *content;
     t_node *next;
 }   t_node;
+
+typedef struct s_point {
+    int height;
+    int color;
+    int x;
+    int y;
+}   t_point;
+
+typedef t_point ***map;
 
 #include "minilibx-linux/mlx.h"
 #include "minilibx-linux/mlx_int.h"
@@ -30,8 +42,8 @@ typedef struct s_node {
     #define M_PI 3.14159265358979323846
 #endif
 
-#define SCREEN_WIDTH 1920
-#define SCREEN_HEIGHT 1080
+#define SCRW 1920
+#define SCRH 1080
 
 
 enum Keyboard {
@@ -43,17 +55,11 @@ enum Keyboard {
 
 //gcc -L./minilibx-linux fdf.c -lmlx -lXext -lX11 -lm
 
-typedef struct s_point{
-    int x;
-    int y;
-    int height;
-} t_point;
-
-typedef struct s_params {
+typedef struct s_vars {
     void *mlx;
     void *window;
     int window_size[2];
-    int map_dimensions[2];
+    int map_size[2];
     int mouse_down;
     int last_x;
     int last_y;
@@ -74,11 +80,10 @@ typedef struct s_params {
     unsigned int model_color_top;
     unsigned int model_color_bottom;
     char projection;
-    char *data;
-    int map[21][21];
-    t_point **screenmap;
-    int screen_buffer[SCREEN_WIDTH][SCREEN_HEIGHT];
-}   t_params;
+    char *screen;
+    map map;
+    int screen_buffer[SCRW][SCRH];
+}   t_vars;
 
 enum Projections {
     ISOMETRIC = 1,
@@ -99,21 +104,122 @@ const char *getProjectionName(enum Projections projection)
 
 /////////////////  INPUT /////////////////
 
-int    cb_key(int keycode, t_params *params)
+
+int ft_strlen(char *str)
+{
+    int i;
+
+    if (str == NULL)
+        return (-1);
+    i = 0;
+    while (str[i])
+        i++;
+    return (i);
+}
+
+int ft_strchr(char *str, char c)
+{
+    int i;
+
+    i = 0;
+    if (str && str[i])
+    {
+        while (str[i])
+        {
+            if (str[i] == c)
+                return (i);
+            i++;
+        }
+    }
+    return (-1);
+}
+
+char    *ft_strdup(char *src)
+{
+    char *str;
+    int i;
+
+    if (src == NULL)
+        return (NULL);
+    i = ft_strlen(src);
+    str = malloc(i + 1);
+    if (str == NULL)
+        return (NULL);
+    str[i] = '\0';
+    while (i >= 0)
+    {
+        str[i] = src[i];
+        i--;
+    }
+    return (str);
+}
+
+char    *ft_strndup(char *src, int amt)
+{
+    char *str;
+    int i;
+
+    i = 0;
+    str = malloc(amt + 1);
+    while (src[i] && i != amt)
+    {
+        str[i] = src[i];
+        i++;
+    }
+    str[i] = '\0';
+    return (str);
+}
+
+void ft_strcpy(char *dst, char *src)
+{
+    int i;
+
+    if (dst == NULL || src == NULL)
+        return ;
+    i = 0;
+    while (src[i])
+    {
+        dst[i] = src[i];
+        i++;
+    }
+}
+
+char *ft_strjoin(char *s1, char *s2)
+{
+    char *str;
+    int s1len;
+    int s2len;
+
+    if (s1 == NULL && s2 == NULL)
+        return (NULL);
+    if (s1 == NULL)
+        return (s2);
+    if (s2 == NULL)
+        return (s1);
+    s1len = ft_strlen(s1);
+    s2len = ft_strlen(s2);
+    str = malloc(s1len + s2len + 1);
+    ft_strcpy(str, s1);
+    ft_strcpy(str + s1len, s2);
+    str[s1len + s2len] = '\0';
+    return (str);
+}
+
+int    cb_key(int keycode, t_vars *vars)
 {
     int x;
     int y;
     
     printf("KEYPRESS DETECTED (%x)\n", keycode);
     if (keycode == KEYESC)
-        mlx_loop_end(params->mlx);
+        mlx_loop_end(vars->mlx);
     else if(keycode == KEYSPC)
     {
-        mlx_clear_window(params->mlx, params->window);
+        mlx_clear_window(vars->mlx, vars->window);
         printf("Clearing window\n");
     }
     else if(keycode >= 0x30 && keycode <= 0x39)
-        params->projection = keycode - 0x30;
+        vars->projection = keycode - 0x30;
     return (0);
 }
 
@@ -127,28 +233,28 @@ float clamp(float min, float max, float value)
         return (value);
 }
 
-int    cb_mouse_down(int button, int x, int y, t_params *params)
+int    cb_mouse_down(int button, int x, int y, t_vars *vars)
 {
     if (button == 3)
     {
-        mlx_mouse_hide(params->mlx, params->window);
-        mlx_mouse_move(params->mlx, params->window, SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2);
-        params->last_x = 0;
-        params->last_y = 0;
-        params->mouse_down = 1;
+        mlx_mouse_hide(vars->mlx, vars->window);
+        mlx_mouse_move(vars->mlx, vars->window, SCRW / 2, SCRH / 2);
+        vars->last_x = 0;
+        vars->last_y = 0;
+        vars->mouse_down = 1;
     }
     else if (button == 4)
-        params->zoom = clamp(0.2, 2, params->zoom + 0.1);
+        vars->zoom = clamp(0.2, 2, vars->zoom + 0.1);
     else if (button == 5)
-        params->zoom = clamp(0.2, 2, params->zoom - 0.1);
+        vars->zoom = clamp(0.2, 2, vars->zoom - 0.1);
     return (0);
 }
 
-int    cb_mouse_up(int button, int x, int y, t_params *params)
+int    cb_mouse_up(int button, int x, int y, t_vars *vars)
 {
     if (button == 3)
-        mlx_mouse_show(params->mlx, params->window);
-        params->mouse_down = 0;
+        mlx_mouse_show(vars->mlx, vars->window);
+        vars->mouse_down = 0;
     return (0);
 }
 
@@ -254,6 +360,45 @@ void    multiply3DVector(float r[3][3], float vec[3], float result[3])
     }
 }
 
+void    apply_rotation_matricies(float x, float y, float z, float result[3][3])
+{
+    float rot_a[3][3];
+    float rot_b[3][3];
+    float rot_c[3][3];
+    RotationMatrixX(deg_to_rad(x), rot_a);
+    RotationMatrixY(deg_to_rad(y), rot_b);
+    multiplyMatrices(rot_a, rot_b, rot_c);
+    RotationMatrixZ(deg_to_rad(z), rot_b);
+    multiplyMatrices(rot_c, rot_b, result);
+}
+
+void mouse_rotation_handler(t_vars *vars)
+{
+    int pos[2];
+
+    pos[0] = 0;
+    pos[1] = 1;
+    if (vars->mouse_down)
+    {
+        mlx_mouse_get_pos(vars->mlx, vars->window, &(pos[0]), &(pos[1]));
+        vars->last_x = pos[0];
+        vars->last_y = pos[1];
+        if (pos[0] <= SCRW / 2 || pos[0] >= SCRW / 2)
+            pos[0] = SCRW / 2;
+        if (pos[1] >= SCRH / 2 || pos[1] <= SCRH / 2)
+            pos[1] = SCRH / 2;
+        vars->x_rot += (pos[1] - vars->last_y) * 0.05;
+        vars->z_rot += (pos[0] - vars->last_x) * 0.05;
+        mlx_mouse_move(vars->mlx, vars->window, SCRW / 2, SCRH / 2);
+    }
+    else
+    {
+        vars->last_x = pos[0];
+        vars->last_y = pos[1];
+        vars->z_rot += 0.05;
+    }
+}
+
 unsigned int    color_step_calc(unsigned int start, unsigned int goal, float percentage)
 {
     int goal_rgba[4];
@@ -280,12 +425,61 @@ unsigned int    color_step_calc(unsigned int start, unsigned int goal, float per
     return(current_color);
 }
 
-void    draw_debug_info(t_params *params)
+void drawLine(t_point p1, t_point p2, t_vars *vars) {
+    t_point lp;
+    t_point hp;
+    t_point sp;
+    if (p1.height > p2.height)
+    {
+        hp = p1;
+        lp = p2;
+        sp = p1;
+    }
+    else
+    {
+        hp = p2;
+        lp = p1;
+        sp = p2;
+    }
+    int dx = abs(hp.x - lp.x);
+    int dy = abs(hp.y - lp.y);
+    int sx = (lp.x < hp.x) ? 1 : -1;
+    int sy = (lp.y < hp.y) ? 1 : -1;
+    int err = dx - dy;
+    int e2;
+    float percentage;
+
+    while (1) {
+        if (lp.x >= 0 && lp.x < SCRW && lp.y >= 0 && lp.y < SCRH) {
+            int index = lp.x * vars->bits_per_color / 8 + lp.y * vars->line_size;
+            float height_range = vars->max_height - vars->min_height;
+            percentage = fabs((float)(hp.height - vars->min_height) / height_range);
+            int color = color_step_calc(vars->model_color_bottom, vars->model_color_top, percentage);
+            vars->screen[index] = (color & 0xFF);
+            vars->screen[index + 1] = (color >> 8) & 0xFF;
+            vars->screen[index + 2] = (color >> 16) & 0xFF;
+            vars->screen[index + 3] = (color >> 24) & 0xFF;
+        }
+        if (lp.x == hp.x && lp.y == hp.y) break;
+
+        e2 = 2 * err;
+        if (e2 > -dy) {
+            err -= dy;
+            lp.x += sx;
+        }
+        if (e2 < dx) {
+            err += dx;
+            lp.y += sy;
+        }
+    }
+}
+
+void    draw_debug_info(t_vars *vars)
 {
     char *projection;
 
-    projection = ft_strjoin("PROJECTION TYPE: ", getProjectionName(params->projection));
-    mlx_string_put(params->mlx, params->window, 10, 10, 0xFFFFFF, projection);
+    projection = ft_strjoin("PROJECTION TYPE: ", getProjectionName(vars->projection));
+    mlx_string_put(vars->mlx, vars->window, 10, 10, 0xFFFFFF, projection);
     free(projection);
 }
 
@@ -306,35 +500,6 @@ size_t	ft_strlcpy(char *dst, const char *src, size_t size)
 		dst[i] = 0x00;
 	}
 	return (len);
-}
-
-int ft_strlen(char *str)
-{
-    int i;
-
-    if (str == NULL)
-        return (-1);
-    i = 0;
-    while (str[i])
-        i++;
-    return (i);
-}
-
-int ft_strchr(char *str, char c)
-{
-    int i;
-
-    i = 0;
-    if (str && str[i])
-    {
-        while (str[i])
-        {
-            if (str[i] == c)
-                return (i);
-            i++;
-        }
-    }
-    return (-1);
 }
 
 t_node *create_node(char *content)
@@ -392,77 +557,6 @@ void    prepend_node(t_node **list, t_node *node)
         node->next = *list;
         *list = node;
     }
-}
-
-char    *ft_strdup(char *src)
-{
-    char *str;
-    int i;
-
-    if (src == NULL)
-        return (NULL);
-    i = ft_strlen(src);
-    str = malloc(i + 1);
-    if (str == NULL)
-        return (NULL);
-    str[i] = '\0';
-    while (i >= 0)
-    {
-        str[i] = src[i];
-        i--;
-    }
-    return (str);
-}
-
-char    *ft_strndup(char *src, int amt)
-{
-    char *str;
-    int i;
-
-    i = 0;
-    str = malloc(amt + 1);
-    while (src[i] && i != amt)
-    {
-        str[i] = src[i];
-        i++;
-    }
-    str[i] = '\0';
-    return (str);
-}
-
-void ft_strcpy(char *dst, char *src)
-{
-    int i;
-
-    if (dst == NULL || src == NULL)
-        return ;
-    i = 0;
-    while (src[i])
-    {
-        dst[i] = src[i];
-        i++;
-    }
-}
-
-char *ft_strjoin(char *s1, char *s2)
-{
-    char *str;
-    int s1len;
-    int s2len;
-
-    if (s1 == NULL && s2 == NULL)
-        return (NULL);
-    if (s1 == NULL)
-        return (s2);
-    if (s2 == NULL)
-        return (s1);
-    s1len = ft_strlen(s1);
-    s2len = ft_strlen(s2);
-    str = malloc(s1len + s2len + 1);
-    ft_strcpy(str, s1);
-    ft_strcpy(str + s1len, s2);
-    str[s1len + s2len] = '\0';
-    return (str);
 }
 
 char    *get_line(char **str)
@@ -594,10 +688,7 @@ size_t ft_strsepn(char *str, char c)
     return (n);
 }
 
-typedef struct s_point {
-    int height;
-    int color;
-}   t_point;
+
 
 size_t count_rows(char *data)
 {
@@ -737,7 +828,7 @@ int fill_row(t_point ***row, size_t ncols, char *data)
     return (1);
 }
 
-typedef t_point ***map;
+
 
 int    dissect_map(map *map, char *data, size_t *nrows, size_t *ncols)
 {
@@ -785,11 +876,137 @@ void free_map(t_point ***map, size_t nrows, size_t ncols)
     free(map);
 }
 
+t_vars *initialize_vars(size_t rows, size_t columns)
+{
+    t_vars *vars;
+    int i;
+    int j;
+
+    vars = malloc(sizeof(t_vars));
+    vars->mlx = mlx_init();
+    vars->window = mlx_new_window(vars->mlx, SCRW, SCRH, "");;
+    vars->map_size[0] = rows;
+    vars->map_size[1] = columns;
+    vars->mouse_down = 0;
+    vars->last_x = 0;
+    vars->x_rot = 50;
+    vars->y_rot = 0;
+    vars->z_rot = 45;
+    vars->zoom = 0.25;
+    vars->tile_width = 30;
+    vars->tile_height = 30;
+    vars->min_height = 0;
+    vars->max_height = 11;
+    vars->projection = 1;
+    vars->bg_color_top = 0x57212f;
+    vars->bg_color_bottom = 0x091027;
+    vars->model_color_top = 0xffffff;
+    vars->model_color_bottom = 0xe72337;
+    vars->scr_ratio = SCRW / SCRH;
+    
+    i = 0;
+    while (i < vars->window_size[1])
+    {
+        j = 0;
+        while (j < vars->window_size[0])
+            vars->screen_buffer[i][j++] = 0;
+        i++;
+    }
+    return (vars);
+}
+
+
+int    cb_loop(t_vars *vars)
+{
+
+    int i;
+    int j;
+    float rotFinal[3][3];
+
+    draw_debug_info(vars);
+    mouse_rotation_handler(vars);
+    apply_rotation_matricies(vars->x_rot, vars->y_rot, vars->z_rot, rotFinal);
+    i = 0;
+    while (vars->map[i] != NULL) {
+        j = 0;
+        while (vars->map[i][j] != NULL)
+        {
+            float point[3] = {j - 10, i - 10, vars->map[i][j]->height};
+            float transformed_point[3];
+            // float result[2];
+            multiply3DVector(rotFinal, point, transformed_point);
+            vars->map[i][j]->x = (int)((transformed_point[0] * (vars->tile_width * vars->zoom) + SCRW / 2));
+            vars->map[i][j]->y = (int)((transformed_point[1] * (vars->tile_height * vars->zoom) + SCRH / 2));
+            j++;
+        }
+        i++;
+    }
+    void *image = mlx_new_image(vars->mlx, SCRW, SCRH);
+    char *screen = mlx_get_data_addr(image, &vars->bits_per_color, &vars->line_size, &vars->endianess);
+    int color;
+    i = 0;
+    int yCoord;
+    vars->screen = screen;
+    unsigned int x;
+    unsigned int y;
+    unsigned int idx;
+    float perc;
+    y = 0;
+    while(y < SCRH)
+    {
+        x = 0;
+        perc = (float)y / (SCRH - 1);
+        color = color_step_calc(vars->bg_color_top, vars->bg_color_bottom, perc);
+        while(x < SCRW)
+        {
+            idx = (x * vars->bits_per_color / 8) + (y * vars->line_size);
+            vars->screen[idx] = (color & 0xFF);
+            vars->screen[idx + 1] = (color >> 8) & 0xFF;
+            vars->screen[idx + 2] = (color >> 16) & 0xFF;
+            vars->screen[idx + 3] = (color >> 24) & 0xFF;
+            x++;
+        }
+        y++;
+    }
+    t_point *p;
+    i = 0;
+    // while (vars->screenmap[i] != NULL) {
+    //     p = params->screenmap[i];
+    //     if (0 != (i + 1) % 21) {
+
+    //         drawLine(*p, *params->screenmap[i + 1], params);
+    //     }
+    //     if (i < 21 * (21 - 1)) {
+    //         drawLine(*p, *params->screenmap[i + 21], params);
+    //     }
+    //     i++;
+    // }
+    mlx_clear_window(vars->mlx, vars->window);
+    mlx_put_image_to_window(vars->mlx, vars->window, image, 0, 0);
+    mlx_destroy_image(vars->mlx, image);
+    i = 0;
+    while (i < SCRW)
+    {
+        j = 0;
+        while (j < SCRH)
+        {
+            if (vars->screen_buffer[i][j])
+            {
+                mlx_pixel_put(vars->mlx, vars->window, i, j, vars->screen_buffer[i][j]);
+                vars->screen_buffer[i][j] = 0;
+            }
+            j++;
+        }
+        i++;
+    }
+}
+
+
 int main()
 {
     int fd;
     char *data;
-    map map;
+    t_vars *vars;
     size_t nr;
     size_t nc;  
 
@@ -801,28 +1018,29 @@ int main()
     }
     printf("PROCESSING MAP FILE\n");
     data = read_map(fd);
-    if (data == NULL)
+    if (data == NULL);
         printf("MAP READ ERROR\n");
-    if (dissect_map(&map, data, &nr, &nc) == 1)
+    if (dissect_map(&vars->map, data, &nr, &nc) == 1)
+    {
         printf("READING COMPLETE\n");
+        vars = initialize_vars(nr, nc);
+    }
     else
         printf("INVALID MAP FILE\n");
+    //MOUSE
+    mlx_hook(vars->window, 4, (1L<<2),&cb_mouse_down, vars);
+    mlx_hook(vars->window, 5, (1L<<3),&cb_mouse_up, vars);
+    //MAIN LOOP
+    mlx_loop_hook(vars->mlx, &cb_loop, vars);
+    //KEYS
+    mlx_key_hook(vars->window, &cb_key, vars);
+    mlx_loop(vars->mlx);
 
-    // int i;
-    // int j;
-
-    // i = 0;
-    // while (map[i] != NULL)
-    // {
-    //     j = 0;
-    //     while (map[i][j] != NULL)
-    //     {
-    //         printf("HEIGHT: %i COLOR: %i\n", map[i][j]->height, map[i][j]->color);
-    //         j++;
-    //     }
-    //     i++;
-    // }
-    free_map(map, nr, nc);
+    free_map(vars->map, nr, nc);
     free(data);
+    free(vars);
     return (0);
 }
+
+
+
