@@ -6,11 +6,11 @@
 /////////////////  HEADER ////////////////
 
 #ifndef MAP
-# define MAP "./basictest.fdf"
+# define MAP "./elem-fract.fdf"
 #endif
 
 #ifndef BUFFER_SIZE
-# define BUFFER_SIZE 20
+# define BUFFER_SIZE 200
 #endif
 
 #ifndef DSCRX
@@ -295,9 +295,9 @@ int    cb_mouse_down(int button, int x, int y, t_vars *vars)
         vars->mouse_down = 1;
     }
     else if (button == 4)
-        vars->zoom = clamp(0.2, 2, vars->zoom + 0.1);
+        vars->zoom = clamp(0.05, 2, vars->zoom + 0.1);
     else if (button == 5)
-        vars->zoom = clamp(0.2, 2, vars->zoom - 0.1);
+        vars->zoom = clamp(0.05, 2, vars->zoom - 0.1);
     return (0);
 }
 
@@ -475,53 +475,43 @@ unsigned int    color_step_calc(unsigned int start, unsigned int goal, float per
 }
 
 void drawLine(t_point *p1, t_point *p2, t_vars *vars) {
-    t_point *lp;
-    t_point *hp;
-    t_point *sp;
-    if (p1->height > p2->height)
-    {
-        hp = p1;
-        lp = p2;
-        sp = p1;
-    }
-    else
-    {
-        hp = p2;
-        lp = p1;
-        sp = p2;
-    }
-    int dx = abs(hp->x - lp->x);
-    int dy = abs(hp->y - lp->y);
-    int sx = (lp->x < hp->x) ? 1 : -1;
-    int sy = (lp->y < hp->y) ? 1 : -1;
+    t_point lp = *p1;
+    t_point hp = *p2;
+
+    int dx = abs(hp.x - lp.x);
+    int dy = abs(hp.y - lp.y);
+    int sx = (lp.x < hp.x) ? 1 : -1;
+    int sy = (lp.y < hp.y) ? 1 : -1;
     int err = dx - dy;
     int e2;
-    float percentage;
+
+    float height_range = vars->max_height - vars->min_height;
 
     while (1) {
-        if (lp->x >= 0 && lp->x < SCRW && lp->y >= 0 && lp->y < SCRH) {
-            int index = lp->x * vars->bits_per_color / 8 + lp->y * vars->line_size;
-            float height_range = vars->max_height - vars->min_height;
-            percentage = fabs((float)(lp->height - vars->min_height) / height_range);
+        if (lp.x >= 0 && lp.x < SCRW && lp.y >= 0 && lp.y < SCRH) {
+            int index = lp.x * vars->bits_per_color / 8 + lp.y * vars->line_size;
+            float percentage = (lp.height - vars->min_height) / height_range;
             int color = color_step_calc(vars->model_color_bottom, vars->model_color_top, percentage);
             vars->screen[index] = (color & 0xFF);
             vars->screen[index + 1] = (color >> 8) & 0xFF;
             vars->screen[index + 2] = (color >> 16) & 0xFF;
             vars->screen[index + 3] = (color >> 24) & 0xFF;
         }
-        if (lp->x == hp->x && lp->y == hp->y) break;
 
-        e2 = 2 * err;
+        if (lp.x == hp.x && lp.y == hp.y) break;
+
+        e2 = err;
         if (e2 > -dy) {
             err -= dy;
-            lp->x += sx;
+            lp.x += sx;
         }
         if (e2 < dx) {
             err += dx;
-            lp->y += sy;
+            lp.y += sy;
         }
     }
 }
+
 
 
 void    draw_debug_info(t_vars *vars)
@@ -1021,8 +1011,10 @@ int    cb_loop(t_vars *vars)
         j = 0;
         while (vars->map[i][j] != NULL)
         {
+            //VERTICAL
             if (vars->map[i + 1] != NULL)
                 drawLine(vars->map[i][j], vars->map[i + 1][j], vars);
+            //HORIZONTAL
             if (vars->map[i][j + 1] != NULL)
                 drawLine(vars->map[i][j], vars->map[i][j + 1], vars);
             j++;
@@ -1032,21 +1024,6 @@ int    cb_loop(t_vars *vars)
     mlx_clear_window(vars->mlx, vars->win);
     mlx_put_image_to_window(vars->mlx, vars->win, image, 0, 0);
     mlx_destroy_image(vars->mlx, image);
-    // i = 0;
-    // while (i < SCRW)
-    // {
-    //     j = 0;
-    //     while (j < SCRH)
-    //     {
-    //         if (vars->screen_buffer[i][j])
-    //         {
-    //             mlx_pixel_put(vars->mlx, vars->win, i, j, vars->screen_buffer[i][j]);
-    //             vars->screen_buffer[i][j] = 0;
-    //         }
-    //         j++;
-    //     }
-    //     i++;
-    // }
 }
 
 int main()
