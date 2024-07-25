@@ -33,10 +33,8 @@ typedef struct s_node {
 }   t_node;
 
 typedef struct s_point {
-    int height;
+    int pos[3];
     int color;
-    int x;
-    int y;
 }   t_point;
 
 typedef t_point ***map;
@@ -52,8 +50,8 @@ typedef t_point ***map;
     #define M_PI 3.14159265358979323846
 #endif
 
-#define SCRW 1920
-#define SCRH 1080
+#define SCRW 800
+#define SCRH 600
 
 
 enum Keyboard {
@@ -84,6 +82,8 @@ typedef struct s_vars {
     float x_rot;
     float y_rot;
     float z_rot;
+    int x_offset;
+    int y_offset;
     float tile_width;
     float tile_height;
     float scr_ratio;
@@ -295,9 +295,9 @@ int    cb_mouse_down(int button, int x, int y, t_vars *vars)
         vars->mouse_down = 1;
     }
     else if (button == 4)
-        vars->zoom = clamp(0.05, 2, vars->zoom + 0.1);
+        vars->zoom = clamp(0.1, 1.5, vars->zoom + 0.05);
     else if (button == 5)
-        vars->zoom = clamp(0.05, 2, vars->zoom - 0.1);
+        vars->zoom = clamp(0.1, 1.5, vars->zoom - 0.05);
     return (0);
 }
 
@@ -393,7 +393,7 @@ void    multiplyMatrices(float a[3][3], float b[3][3], float result[3][3])
 }
 
 //Multiply resulting rotation matrix by 3D vector
-void    multiply3DVector(float r[3][3], float vec[3], float result[3])
+void    multiply3DVector(float r[3][3], int vec[3], float result[3])
 {
     int i;
     int j;
@@ -423,6 +423,35 @@ void    apply_rotation_matricies(float x, float y, float z, float result[3][3])
     multiplyMatrices(rot_c, rot_b, result);
 }
 
+// void Pipeline::InitPerspectiveProj(Matrix4f& m) const>
+// {
+//     const float ar = 800 / 600;
+//     const float zNear = m_persProj.zNear;
+//     const float zFar = m_persProj.zFar;
+//     const float zRange = zNear - zFar;
+//     const float tanHalfFOV = tanf(ToRadian(m_persProj.FOV / 2.0));
+
+//     m.m[0][0] = 1.0f / (tanHalfFOV * ar);
+//     m.m[0][1] = 0.0f;
+//     m.m[0][2] = 0.0f;
+//     m.m[0][3] = 0.0f;
+
+//     m.m[1][0] = 0.0f;
+//     m.m[1][1] = 1.0f / tanHalfFOV;
+//     m.m[1][2] = 0.0f;
+//     m.m[1][3] = 0.0f;
+
+//     m.m[2][0] = 0.0f;
+//     m.m[2][1] = 0.0f;
+//     m.m[2][2] = (-zNear - zFar) / zRange;
+//     m.m[2][3] = 2.0f * zFar * zNear / zRange;
+
+//     m.m[3][0] = 0.0f;
+//     m.m[3][1] = 0.0f;
+//     m.m[3][2] = 1.0f;
+//     m.m[3][3] = 0.0f;
+// }
+
 void mouse_rotation_handler(t_vars *vars)
 {
     int pos[2];
@@ -431,21 +460,23 @@ void mouse_rotation_handler(t_vars *vars)
     pos[1] = 1;
     if (vars->mouse_down)
     {
-        mlx_mouse_get_pos(vars->mlx, vars->win, &(pos[0]), &(pos[1]));
-        vars->last_x = pos[0];
-        vars->last_y = pos[1];
-        if (pos[0] <= SCRW / 2 || pos[0] >= SCRW / 2)
-            pos[0] = SCRW / 2;
-        if (pos[1] >= SCRH / 2 || pos[1] <= SCRH / 2)
-            pos[1] = SCRH / 2;
-        vars->x_rot += (pos[1] - vars->last_y) * 0.05;
-        vars->z_rot += (pos[0] - vars->last_x) * 0.05;
-        mlx_mouse_move(vars->mlx, vars->win, SCRW / 2, SCRH / 2);
-        return ;
+        if (vars->pmode == ISOMETRIC)
+        {
+            mlx_mouse_get_pos(vars->mlx, vars->win, &(pos[0]), &(pos[1]));
+            vars->last_x = pos[0];
+            vars->last_y = pos[1];
+            if (pos[0] <= SCRW / 2 || pos[0] >= SCRW / 2)
+                pos[0] = SCRW / 2;
+            if (pos[1] >= SCRH / 2 || pos[1] <= SCRH / 2)
+                pos[1] = SCRH / 2;
+            vars->x_offset += (pos[0] - vars->last_x);
+            vars->y_offset += (pos[1] - vars->last_y);
+            mlx_mouse_move(vars->mlx, vars->win, SCRW / 2, SCRH / 2);
+            return ;
+        }
     }
     vars->last_x = pos[0];
     vars->last_y = pos[1];
-    vars->z_rot += 0.05;
 }
 
 unsigned int    color_step_calc(unsigned int start, unsigned int goal, float percentage)
@@ -474,43 +505,44 @@ unsigned int    color_step_calc(unsigned int start, unsigned int goal, float per
     return(current_color);
 }
 
-void drawLine(t_point *p1, t_point *p2, t_vars *vars) {
-    t_point lp = *p1;
-    t_point hp = *p2;
+void drawLine(t_point p1, t_point p2, t_vars *vars) {
+    t_point lp = p1;
+    t_point hp = p2;
 
-    int dx = abs(hp.x - lp.x);
-    int dy = abs(hp.y - lp.y);
-    int sx = (lp.x < hp.x) ? 1 : -1;
-    int sy = (lp.y < hp.y) ? 1 : -1;
+    int dx = abs(hp.pos[0] - lp.pos[0]);
+    int dy = abs(hp.pos[1] - lp.pos[1]);
+    int sx = (lp.pos[0] < hp.pos[0]) ? 1 : -1;
+    int sy = (lp.pos[1] < hp.pos[1]) ? 1 : -1;
     int err = dx - dy;
     int e2;
 
     float height_range = vars->max_height - vars->min_height;
 
     while (1) {
-        if (lp.x >= 0 && lp.x < SCRW && lp.y >= 0 && lp.y < SCRH) {
-            int index = lp.x * vars->bits_per_color / 8 + lp.y * vars->line_size;
-            float percentage = (lp.height - vars->min_height) / height_range;
-            int color = color_step_calc(vars->model_color_bottom, vars->model_color_top, percentage);
+        if (lp.pos[0] >= 0 && lp.pos[0] < SCRW && lp.pos[1] >= 0 && lp.pos[1] < SCRH) {
+            int index = lp.pos[1] * vars->line_size + lp.pos[0] * vars->bits_per_color / 8;
+            float percentage = (lp.pos[2] - vars->min_height) / height_range;
+            int color = color_step_calc(lp.color, hp.color, percentage);
             vars->screen[index] = (color & 0xFF);
             vars->screen[index + 1] = (color >> 8) & 0xFF;
             vars->screen[index + 2] = (color >> 16) & 0xFF;
             vars->screen[index + 3] = (color >> 24) & 0xFF;
         }
 
-        if (lp.x == hp.x && lp.y == hp.y) break;
+        if (lp.pos[0] == hp.pos[0] && lp.pos[1] == hp.pos[1]) break;
 
         e2 = err;
         if (e2 > -dy) {
             err -= dy;
-            lp.x += sx;
+            lp.pos[0] += sx;
         }
         if (e2 < dx) {
             err += dx;
-            lp.y += sy;
+            lp.pos[1] += sy;
         }
     }
 }
+
 
 
 
@@ -829,7 +861,7 @@ int read_values(t_point **point, char *str)
     comma = ft_strchr(str, ',');
     if (comma != -1)
         (*point)->color = ft_hatoi(str + comma + 1);
-    (*point)->height = ft_atoi(str);
+    (*point)->pos[2] = ft_atoi(str);
     return (1);
 }
 
@@ -924,9 +956,11 @@ t_vars *initialize_vars(size_t rows, size_t columns)
     vars->map_size[1] = columns;
     vars->mouse_down = 0;
     vars->last_x = 0;
-    vars->x_rot = 50;
+    vars->x_rot = 30;
     vars->y_rot = 0;
-    vars->z_rot = 45;
+    vars->z_rot = -45;
+    vars->x_offset = 0;
+    vars->y_offset = 0;
     vars->zoom = 0.25;
     vars->tile_width = 30;
     vars->tile_height = 30;
@@ -983,46 +1017,45 @@ int    cb_loop(t_vars *vars)
 
     int i;
     int j;
+    t_point pt[2][2];
     float rotFinal[3][3];
 
-    draw_debug_info(vars);
     mouse_rotation_handler(vars);
+    IsometricMatrix(rotFinal);
     apply_rotation_matricies(vars->x_rot, vars->y_rot, vars->z_rot, rotFinal);
-    i = 0;
-    while (vars->map[i] != NULL) {
-        j = 0;
-        while (vars->map[i][j] != NULL)
-        {
-            float point[3] = {j - 10, i - 10, vars->map[i][j]->height};
-            float transformed_point[3];
-            multiply3DVector(rotFinal, point, transformed_point);
-            vars->map[i][j]->x = (int)((transformed_point[0] * (vars->tile_width * vars->zoom) + SCRW / 2));
-            vars->map[i][j]->y = (int)((transformed_point[1] * (vars->tile_height * vars->zoom) + SCRH / 2));
-            j++;
-        }
-        i++;
-    }
     void *image = mlx_new_image(vars->mlx, SCRW, SCRH);
     vars->screen = mlx_get_data_addr(image, &vars->bits_per_color, &vars->line_size, &vars->endianess);
     draw_background_gradient(vars);
-    t_point *p;
     i = 0;
     while (vars->map[i] != NULL) {
         j = 0;
         while (vars->map[i][j] != NULL)
         {
-            //VERTICAL
-            if (vars->map[i + 1] != NULL)
-                drawLine(vars->map[i][j], vars->map[i + 1][j], vars);
-            //HORIZONTAL
-            if (vars->map[i][j + 1] != NULL)
-                drawLine(vars->map[i][j], vars->map[i][j + 1], vars);
+            float transformed_point[3];
+            float transformed_point2[3];
+            vars->screen
+            multiply3DVector(rotFinal, vars->map[i][j]->pos, transformed_point);
+            multiply3DVector(rotFinal, vars->map[i][j]->pos, transformed_point2);
+            pt[1][0].pos[0] = (int)(((transformed_point[0] + vars->x_offset) * (vars->tile_width * vars->zoom) + SCRW / 2));
+            pt[1][0].pos[1] = (int)(((transformed_point[1] + vars->y_offset) * (vars->tile_height * vars->zoom) + SCRH / 2));
+            pt[1][0].color = vars->map[i][j]->color;
             j++;
         }
         i++;
     }
     mlx_clear_window(vars->mlx, vars->win);
+    while (vars->map[i + 1] != NULL) {
+        j = 0;
+        while (vars->map[i][j + 1] != NULL)
+        {
+            drawLine(pt[0][0], pt[1][0], vars);
+            drawLine(pt[0][1], pt[1][1], vars);
+            j++;
+        }
+        i++;
+    }
     mlx_put_image_to_window(vars->mlx, vars->win, image, 0, 0);
+    draw_debug_info(vars);
     mlx_destroy_image(vars->mlx, image);
 }
 
